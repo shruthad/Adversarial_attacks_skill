@@ -199,7 +199,13 @@ Advanced targets can include trace spans:
 
 ## How Prompts Are Generated
 
-The skill can generate prompts in three ways:
+Prompt generation always starts from the project profile and taxonomy:
+
+1. `system_profile.yaml` describes the target, protected assets, tools, roles, guardrails, and allowed test target.
+2. `taxonomy.yaml` selects or maps the vulnerability categories that are relevant for that target.
+3. After the profile and taxonomy are understood, the skill can generate prompts through templates, optional DeepTeam baseline generation, or optional DeepTeam expansion.
+
+The skill can generate prompts in these ways:
 
 1. Deterministic seed templates
    - default path
@@ -298,24 +304,21 @@ Typical classifications:
 flowchart TD
     A[Conversational request] --> B[Skill instructions]
     B --> C[system_profile.yaml]
-    B --> D[taxonomy.yaml default catalog]
-    B --> E[seed_templates.yaml optional]
     C --> F[Attack surface analysis]
-    D --> F
-    E --> G[Deterministic seed prompts]
-    F --> G
-    F --> H[Optional DeepTeam baseline seeds]
+    F --> D[taxonomy.yaml category selection and mappings]
+    D --> E{Seed generation path}
+    E --> G[Deterministic seed prompts from seed_templates.yaml]
+    E --> H[Optional DeepTeam baseline seeds from target scope]
     G --> I[Validate and deduplicate]
     H --> I
     I --> J[Human review]
-    J --> K[DeepTeam expansion]
-    K --> L[Allowlisted target callback]
+    J --> K{Use DeepTeam expansion?}
+    K -->|Yes| N[Expanded adversarial prompts]
+    K -->|No| L[Reviewed seed prompts]
+    N --> L[Allowlisted target callback]
     L --> M[Final response]
-    L --> N[Optional trace]
     M --> O[Output-first evaluator]
-    N --> P[Optional trace evaluators]
     O --> Q[Aggregate result]
-    P --> Q
     Q --> R[Markdown and JSON reports]
     Q --> S[Human-confirmed regression JSONL]
 ```
@@ -434,9 +437,7 @@ flowchart TD
     K --> L[Human review]
     L --> M[Target execution]
     M --> N[Output-first evaluator]
-    M --> O[Optional trace evaluator]
     N --> P[Unified report]
-    O --> P
     P --> Q[Regression suite]
 ```
 

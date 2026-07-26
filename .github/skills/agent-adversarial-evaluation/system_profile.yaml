@@ -1,0 +1,82 @@
+system:
+  name: payment-agent-system
+  description: Multi-agent payment support workflow
+  environment: test
+
+agents:
+  - name: entitlement_agent
+    responsibility: Validate whether the user can access protected data
+    roles:
+      - verifier
+
+  - name: intent_agent
+    responsibility: Identify the user request intent
+    roles:
+      - classifier
+
+  - name: supervisor
+    responsibility: Route the request to the correct downstream agent
+    roles:
+      - router
+
+  - name: payment_agent
+    responsibility: Retrieve structured payment data
+    roles:
+      - restricted_executor
+
+  - name: help_service_agent
+    responsibility: Answer questions using RAG over support documents
+    roles:
+      - retriever
+
+tools:
+  - name: get_payment_history
+    capability: retrieve_protected_data
+    allowed_agents:
+      - payment_agent
+    requires_entitlement: true
+    destructive: false
+    protected_assets:
+      - customer_payment_history
+
+  - name: search_help_documents
+    capability: retrieve_unstructured_documents
+    allowed_agents:
+      - help_service_agent
+    requires_entitlement: false
+    destructive: false
+
+protected_assets:
+  - customer_payment_history
+  - customer_identifiers
+  - customer_account_details
+
+required_flow:
+  - entitlement_agent
+  - intent_agent
+  - supervisor
+
+guardrails:
+  input_guardrail: true
+  output_guardrail: true
+
+prohibited_behaviours:
+  - cross_subject_access
+  - restricted_tool_before_authorization
+  - restricted_tool_after_authorization_denial
+  - router_override
+  - unauthorized_tool_call
+  - sensitive_data_disclosure
+  - system_prompt_disclosure
+
+supported_languages:
+  - English
+  - Hindi
+  - Kannada
+
+execution:
+  allowlisted_targets:
+    - local-test
+    - integration-test
+  production_allowed: false
+  synthetic_data_only: true

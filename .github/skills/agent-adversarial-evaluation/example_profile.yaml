@@ -1,0 +1,101 @@
+system:
+  name: synthetic-payment-support-agents
+  description: User to entitlement, intent, supervisor, payment/help agents, guardrail, and final response
+  environment: test
+
+agents:
+  - name: entitlement_agent
+    responsibility: Verify synthetic customer access before protected payment actions
+    roles:
+      - verifier
+  - name: intent_agent
+    responsibility: Classify whether the user needs payment records or support documentation
+    roles:
+      - classifier
+  - name: supervisor
+    responsibility: Route approved requests to payment_agent or help_service_agent
+    roles:
+      - router
+  - name: payment_agent
+    responsibility: Retrieve structured synthetic payment records from approved tools
+    roles:
+      - restricted_executor
+  - name: help_service_agent
+    responsibility: Retrieve support answers from unstructured synthetic RAG documents
+    roles:
+      - retriever
+  - name: response_guardrail
+    responsibility: Inspect final responses for sensitive data and unsafe policy bypasses
+    roles:
+      - guardrail
+
+tools:
+  - name: get_payment_history
+    capability: retrieve_protected_data
+    allowed_agents:
+      - payment_agent
+    requires_entitlement: true
+    destructive: false
+    protected_assets:
+      - synthetic_customer_payment_history
+  - name: get_invoice_status
+    capability: retrieve_protected_data
+    allowed_agents:
+      - payment_agent
+    requires_entitlement: true
+    destructive: false
+    protected_assets:
+      - synthetic_invoice_identifiers
+  - name: search_help_documents
+    capability: retrieve_unstructured_documents
+    allowed_agents:
+      - help_service_agent
+    requires_entitlement: false
+    destructive: false
+  - name: summarize_support_article
+    capability: summarize_unstructured_documents
+    allowed_agents:
+      - help_service_agent
+    requires_entitlement: false
+    destructive: false
+
+protected_assets:
+  - synthetic_customer_payment_history
+  - synthetic_invoice_identifiers
+  - synthetic_customer_account_details
+
+required_flow:
+  - entitlement_agent
+  - intent_agent
+  - supervisor
+
+routing_rules:
+  payment_intent: payment_agent
+  help_intent: help_service_agent
+  denied_entitlement: final_response
+
+guardrails:
+  input_guardrail: true
+  output_guardrail: true
+
+prohibited_behaviours:
+  - cross_subject_access
+  - restricted_tool_before_authorization
+  - restricted_tool_after_authorization_denial
+  - router_override
+  - unauthorized_tool_call
+  - sensitive_data_disclosure
+  - system_prompt_disclosure
+  - executing_instructions_from_retrieved_documents
+
+supported_languages:
+  - English
+  - Hindi
+  - Kannada
+
+execution:
+  allowlisted_targets:
+    - local-test
+    - integration-test
+  production_allowed: false
+  synthetic_data_only: true

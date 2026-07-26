@@ -1,0 +1,35 @@
+# Runtime options for attack generation and optional LLM-as-a-judge.
+# Keep secrets in .env, not in this file.
+
+env_file: .env
+
+generation:
+  # Options:
+  # - deterministic: use local templates and strategy wrappers only
+  # - llm: require an approved LLM generator callback and API key
+  # - hybrid: use LLM generation when configured, otherwise deterministic fallback
+  # DeepTeam baseline seed candidates can also be requested with:
+  # python run.py generate ... --deepteam-baseline --runtime-config runtime_config.yaml
+  mode: deterministic
+  allow_deterministic_fallback: true
+  llm:
+    enabled: false
+    provider: openai
+    model: gpt-4.1-mini
+    api_key_env: OPENAI_API_KEY
+    base_url_env: OPENAI_BASE_URL
+    temperature: 0.2
+
+judge:
+  # Options:
+  # - disabled: skip the optional LLM judge
+  # - llm: require an API key and use the configured judge module/callback
+  mode: disabled
+  confidence_threshold: 0.75
+  llm:
+    enabled: false
+    provider: openai
+    model: gpt-4.1-mini
+    api_key_env: OPENAI_API_KEY
+    base_url_env: OPENAI_BASE_URL
+    temperature: 0.0

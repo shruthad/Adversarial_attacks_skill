@@ -1,0 +1,25 @@
+# Secrets and local environment files
+.env
+.env.*
+!.env.example
+
+# Local agent/tool state
+.codex/
+.agents/
+.deepeval/
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Generated outputs
+output/
+.github/skills/*/output/
+
+# OS/editor files
+.DS_Store
+.vscode/
+.idea/

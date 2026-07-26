@@ -323,6 +323,110 @@ flowchart TD
     Q --> S[Human-confirmed regression JSONL]
 ```
 
+### Current Architecture Components
+
+`Conversational request`
+
+- Role: captures what the evaluator wants to test, such as authorization bypass, prompt injection, data leakage, or a full adversarial evaluation.
+- Why it is required: lets the skill narrow the workflow without requiring the user to run Python manually.
+- User provides: a natural-language request and, when needed, the desired vulnerability scope or target name.
+
+`Skill instructions`
+
+- Role: defines the safe operating rules, expected workflow, required files, and human-review checkpoints.
+- Why it is required: keeps the evaluation reusable and prevents unsafe execution against production or real data.
+- User provides: no project-specific content here during normal use.
+
+`system_profile.yaml`
+
+- Role: describes the target system, agents, tools, protected assets, guardrails, workflow order, and allowlisted test targets.
+- Why it is required: this is the main source of truth for what the skill is allowed to test and what safe behavior should look like.
+- User provides: one profile per use case or target system.
+
+`Attack surface analysis`
+
+- Role: reads `system_profile.yaml` and identifies likely vulnerable areas, such as restricted tools, protected assets, routers, document/RAG agents, and final-response leakage risks.
+- Why it is required: prevents generic prompt generation by grounding the test plan in the actual target architecture.
+- User provides: no separate file; this is derived from `system_profile.yaml`.
+
+`taxonomy.yaml category selection and mappings`
+
+- Role: names the vulnerability categories and optionally maps them to standards such as OWASP, OWASP LLM, or MITRE ATLAS.
+- Why it is required: gives the skill a controlled vocabulary for filtering, reporting, DeepTeam target definitions, and regression grouping.
+- User provides: usually nothing for the first run; update only when the project needs custom categories or standards mappings.
+
+`Seed generation path`
+
+- Role: chooses whether seed prompts come from deterministic templates, optional DeepTeam baseline generation, or both.
+- Why it is required: separates repeatable coverage from exploratory generation.
+- User provides: the preferred mode in conversation or CLI flags; otherwise deterministic templates are the default.
+
+`Deterministic seed prompts from seed_templates.yaml`
+
+- Role: creates predictable baseline prompts for each selected vulnerability.
+- Why it is required: gives evaluators stable tests that are easy to review, rerun, and convert into regressions.
+- User provides: optional template edits only when default wording is not specific enough.
+
+`Optional DeepTeam baseline seeds from target scope`
+
+- Role: asks DeepTeam to create additional baseline attack candidates from the target description and vulnerability criteria.
+- Why it is required: adds discovery value when templates may miss creative attack wording.
+- User provides: DeepTeam/runtime configuration and API keys only when this optional path is used.
+
+`Validate and deduplicate`
+
+- Role: removes duplicate tests and rejects malformed or unsupported test cases.
+- Why it is required: keeps the test set reviewable and prevents invalid records from entering execution or regression files.
+- User provides: no separate input.
+
+`Human review`
+
+- Role: lets an evaluator approve, reject, or edit generated prompts before execution.
+- Why it is required: adversarial prompts can be sensitive, domain-specific, or too broad; human review keeps testing intentional.
+- User provides: approval of the generated seed set and any edits needed for the use case.
+
+`Optional DeepTeam expansion`
+
+- Role: expands approved seeds into variants such as role-play, authority-claim, multilingual, obfuscated, or tool-mediated attacks.
+- Why it is required: tests whether the target resists variations of the same underlying attack.
+- User provides: selected expansion strategies when expansion is requested.
+
+`Allowlisted target callback`
+
+- Role: sends approved prompts to the non-production target system and captures the response.
+- Why it is required: keeps execution restricted to safe targets and gives the evaluator real behavior to score.
+- User provides: the target callback or integration for the project.
+
+`Final response`
+
+- Role: stores the user-visible answer returned by the target system.
+- Why it is required: the current evaluator is output-first, so the final response is the main evidence for pass/fail decisions.
+- User provides: no separate input; it is returned by the target.
+
+`Output-first evaluator`
+
+- Role: checks whether the final response violates expected safe behavior or matches failure conditions.
+- Why it is required: the main goal is to identify vulnerabilities from adversarial outputs, even before trace-level evaluation exists.
+- User provides: optional project-specific judge settings if an LLM judge is enabled.
+
+`Aggregate result`
+
+- Role: combines test metadata, target response, evaluation results, severity, and failure reason.
+- Why it is required: creates a consistent record that can be reported, reviewed, or promoted to regression testing.
+- User provides: human confirmation for critical findings or regressions.
+
+`Markdown and JSON reports`
+
+- Role: produces human-readable and machine-readable summaries.
+- Why it is required: supports security review, stakeholder communication, and automation.
+- User provides: no separate input after evaluation results exist.
+
+`Human-confirmed regression JSONL`
+
+- Role: stores confirmed failures as rerunnable regression tests.
+- Why it is required: lets teams verify that fixes stay fixed across future model, prompt, policy, or tool changes.
+- User provides: explicit confirmation that a failure should become a regression.
+
 ## CLI Examples
 
 Analyze:

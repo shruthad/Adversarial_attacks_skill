@@ -12,9 +12,11 @@ def build_summary(results: list[dict[str, Any]], metadata: dict[str, Any] | None
     passed = [result for result in results if result.get("overall_status") == "passed"]
     review = [result for result in results if result.get("requires_human_review")]
     critical = [result for result in failed if result.get("severity") == "critical"]
+    vulnerabilities = {result.get("vulnerability") or result.get("test_case", {}).get("vulnerability") for result in results}
+    vulnerabilities.discard(None)
     return {
-        "total_vulnerability_targets": metadata.get("total_vulnerability_targets", 0),
-        "total_seed_tests_generated": metadata.get("total_seed_tests_generated", 0),
+        "total_vulnerability_targets": metadata.get("total_vulnerability_targets", len(vulnerabilities)),
+        "total_seed_tests_generated": metadata.get("total_seed_tests_generated", len(results)),
         "deepteam_variants_generated": metadata.get("deepteam_variants_generated", 0),
         "accepted_tests": metadata.get("accepted_tests", len(results)),
         "rejected_tests": metadata.get("rejected_tests", 0),
@@ -24,11 +26,8 @@ def build_summary(results: list[dict[str, Any]], metadata: dict[str, Any] | None
         "failed_tests": len(failed),
         "failures_by_vulnerability": dict(Counter(result.get("vulnerability") or result.get("test_case", {}).get("vulnerability") for result in failed)),
         "failures_by_attack_strategy": dict(Counter(result.get("attack_strategy") or result.get("test_case", {}).get("attack_strategy") for result in failed)),
-        "failures_by_agent": dict(Counter(result.get("failed_component") for result in failed if result.get("failed_component"))),
-        "failures_by_tool": metadata.get("failures_by_tool", {}),
+        "failures_by_component": dict(Counter(result.get("failed_component") for result in failed if result.get("failed_component"))),
         "critical_findings": critical,
-        "guardrail_false_positives": _count_named_failure(results, "guardrail false positive"),
-        "guardrail_false_negatives": _count_named_failure(results, "guardrail false negative"),
         "tests_requiring_human_review": len(review),
         "regression_tests_created": metadata.get("regression_tests_created", 0),
         "fixed_regression_tests": metadata.get("fixed_regression_tests", 0),
@@ -66,12 +65,7 @@ def generate_markdown_report(results: list[dict[str, Any]], output_path: str, me
             "",
             f"- By vulnerability: `{json.dumps(summary['failures_by_vulnerability'], sort_keys=True)}`",
             f"- By attack strategy: `{json.dumps(summary['failures_by_attack_strategy'], sort_keys=True)}`",
-            f"- By failed component: `{json.dumps(summary['failures_by_agent'], sort_keys=True)}`",
-            "",
-            "## Guardrails",
-            "",
-            f"- False positives: {summary['guardrail_false_positives']}",
-            f"- False negatives: {summary['guardrail_false_negatives']}",
+            f"- By failed component: `{json.dumps(summary['failures_by_component'], sort_keys=True)}`",
             "",
             "## Regression",
             "",
@@ -115,12 +109,3 @@ def generate_regression_comparison_report(results: list[dict[str, Any]], output_
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(markdown, encoding="utf-8")
     return markdown
-
-
-def _count_named_failure(results: list[dict[str, Any]], phrase: str) -> int:
-    count = 0
-    for result in results:
-        for deterministic in result.get("deterministic_results", []):
-            if phrase in str(deterministic.get("reason", "")).lower():
-                count += 1
-    return count

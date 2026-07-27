@@ -1,6 +1,5 @@
-# Default vulnerability catalog.
-# Users do not need to edit this for a first evaluation. Edit only to add,
-# remove, or remap approved attack categories for a project.
+# MVP vulnerability catalog.
+# Users normally do not need to edit this file for a first evaluation.
 
 prompt_security:
   - id: direct_prompt_injection
@@ -36,15 +35,6 @@ data_security:
       - LLM Data Leakage
       - Exfiltration via AI Inference API
 
-  - id: cross_subject_access
-    name: Cross-Subject Access
-    owasp:
-      - A01: Broken Access Control
-    owasp_llm:
-      - LLM02: Sensitive Information Disclosure
-    mitre_atlas:
-      - LLM Data Leakage
-
   - id: cross_subject_data_leakage
     name: Cross-Subject Data Leakage
     owasp:
@@ -65,87 +55,11 @@ access_control:
     mitre_atlas:
       - AI Agent Tool Invocation
 
-  - id: privilege_escalation
-    name: Privilege Escalation
+  - id: cross_subject_access
+    name: Cross-Subject Access
     owasp:
       - A01: Broken Access Control
-    mitre_atlas:
-      - Privilege Escalation
-
-routing_and_orchestration:
-  - id: intent_misclassification
-    name: Intent Misclassification
     owasp_llm:
-      - LLM06: Excessive Agency
-      - LLM09: Misinformation
+      - LLM02: Sensitive Information Disclosure
     mitre_atlas:
-      - Manipulate AI Model
-
-  - id: router_override
-    name: Router Override
-    owasp_llm:
-      - LLM06: Excessive Agency
-    mitre_atlas:
-      - Modify AI Agent Configuration
-      - AI Agent Tool Invocation
-
-  - id: invalid_component_selection
-    name: Invalid Component Selection
-    owasp_llm:
-      - LLM06: Excessive Agency
-    mitre_atlas:
-      - AI Agent Tool Invocation
-
-tool_security:
-  - id: unauthorized_tool_call
-    name: Unauthorized Tool Call
-    owasp_llm:
-      - LLM06: Excessive Agency
-    mitre_atlas:
-      - AI Agent Tool Invocation
-
-  - id: tool_argument_manipulation
-    name: Tool Argument Manipulation
-    owasp:
-      - A05: Injection
-    owasp_llm:
-      - LLM06: Excessive Agency
-    mitre_atlas:
-      - AI Agent Tool Invocation
-
-  - id: tool_output_injection
-    name: Tool Output Injection
-    owasp_llm:
-      - LLM01: Prompt Injection
-      - LLM05: Improper Output Handling
-    mitre_atlas:
-      - LLM Trusted Output Components Manipulation
-
-  - id: excessive_tool_usage
-    name: Excessive Tool Usage
-    owasp_llm:
-      - LLM10: Unbounded Consumption
-    mitre_atlas:
-      - Cost Harvesting
-
-agent_security:
-  - id: cross_component_instruction_injection
-    name: Cross-Component Instruction Injection
-    owasp_llm:
-      - LLM01: Prompt Injection
-    mitre_atlas:
-      - AI Agent Context Poisoning
-
-  - id: multi_turn_policy_erosion
-    name: Multi-Turn Policy Erosion
-    owasp_llm:
-      - LLM01: Prompt Injection
-    mitre_atlas:
-      - Delay Execution of LLM Instructions
-
-  - id: excessive_agency
-    name: Excessive Agency
-    owasp_llm:
-      - LLM06: Excessive Agency
-    mitre_atlas:
-      - AI Agent Tool Invocation
+      - LLM Data Leakage

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
-from evaluator import aggregate_evaluation, deterministic_trace_evaluators, llm_judge_stub
+from evaluator import aggregate_evaluation, deterministic_output_evaluators, llm_judge_stub
 from reporter import generate_json_report, generate_markdown_report, generate_regression_comparison_report
 from skill import (
     DeepTeamRunner,
@@ -14,7 +13,7 @@ from skill import (
     ensure_target_allowed,
     generate_seed_tests,
     load_runtime_config,
-    load_system_profile,
+    load_target_profile,
     mocked_target_callback,
     read_jsonl,
     require_api_key,
@@ -70,7 +69,7 @@ def main() -> None:
     OUTPUT.mkdir(exist_ok=True)
 
     if args.command == "generate":
-        profile = load_system_profile(args.profile)
+        profile = load_target_profile(args.profile)
         vulnerabilities = resolve_vulnerability_scope(profile, args.vulnerabilities)
         targets = build_vulnerability_targets(profile, vulnerabilities)
         tests = generate_seed_tests(profile, targets, args.tests_per_vulnerability, args.seed_templates)
@@ -96,7 +95,7 @@ def main() -> None:
         print(f"Expanded to {len(deduped)} generated tests. Wrote output/generated_tests.jsonl")
 
     elif args.command == "execute":
-        profile = load_system_profile(args.profile)
+        profile = load_target_profile(args.profile)
         ensure_target_allowed(profile, args.target)
         tests = [TestCase.model_validate(record) for record in read_jsonl(args.tests)]
         results = run_async(DeepTeamRunner().execute_tests(tests, mocked_target_callback))
@@ -104,7 +103,7 @@ def main() -> None:
         print(f"Executed {len(results)} tests against {args.target}. Wrote output/execution_results.jsonl")
 
     elif args.command == "evaluate":
-        profile = load_system_profile(args.profile)
+        profile = load_target_profile(args.profile)
         runtime_config = load_runtime_config(args.runtime_config)
         if args.llm_judge and runtime_config.judge.mode == "llm":
             require_api_key(runtime_config.judge.llm, "LLM judge")
@@ -113,7 +112,7 @@ def main() -> None:
         for record in records:
             test = TestCase.model_validate(record["test_case"])
             target_result = record["target_result"]
-            deterministic = deterministic_trace_evaluators(test, target_result, profile)
+            deterministic = deterministic_output_evaluators(test, target_result, profile)
             judge = llm_judge_stub(test, target_result) if args.llm_judge else None
             aggregate = aggregate_evaluation(test, target_result, deterministic, judge, runtime_config.judge.confidence_threshold)
             aggregate["vulnerability"] = test.vulnerability
@@ -123,7 +122,7 @@ def main() -> None:
         print(f"Evaluated {len(evaluated)} results. Wrote output/evaluated_results.jsonl")
 
     elif args.command == "regression":
-        profile = load_system_profile(args.profile)
+        profile = load_target_profile(args.profile)
         ensure_target_allowed(profile, args.target)
         results = run_async(run_regression_tests(args.tests, mocked_target_callback))
         write_jsonl(OUTPUT / "regression_results.jsonl", results)

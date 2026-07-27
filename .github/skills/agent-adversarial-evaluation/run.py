@@ -9,16 +9,16 @@ from reporter import generate_json_report, generate_markdown_report, generate_re
 from skill import (
     DeepTeamRunner,
     TestCase,
+    build_vulnerability_targets,
     deduplicate_tests,
     ensure_target_allowed,
     generate_seed_tests,
-    identify_attack_surfaces,
     load_runtime_config,
     load_system_profile,
     mocked_target_callback,
-    normalize_vulnerability_id,
     read_jsonl,
     require_api_key,
+    resolve_vulnerability_scope,
     run_async,
     run_regression_tests,
     validate_test_case,
@@ -33,11 +33,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Agent adversarial evaluation skill CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    analyze = subparsers.add_parser("analyze")
-    analyze.add_argument("--profile", required=True)
-
     generate = subparsers.add_parser("generate")
-    generate.add_argument("--profile", required=True)
+    generate.add_argument("--profile", default="target_profile.yaml")
     generate.add_argument("--vulnerabilities", nargs="*", default=[])
     generate.add_argument("--tests-per-vulnerability", type=int, default=3)
     generate.add_argument("--seed-templates", default="seed_templates.yaml")
@@ -52,19 +49,19 @@ def main() -> None:
 
     execute = subparsers.add_parser("execute")
     execute.add_argument("--tests", required=True)
-    execute.add_argument("--profile", default="system_profile.yaml")
+    execute.add_argument("--profile", default="target_profile.yaml")
     execute.add_argument("--target", required=True)
 
     evaluate = subparsers.add_parser("evaluate")
     evaluate.add_argument("--results", required=True)
-    evaluate.add_argument("--profile", default="system_profile.yaml")
+    evaluate.add_argument("--profile", default="target_profile.yaml")
     evaluate.add_argument("--llm-judge", action="store_true")
     evaluate.add_argument("--runtime-config", default="runtime_config.yaml")
 
     regression = subparsers.add_parser("regression")
     regression.add_argument("--tests", required=True)
     regression.add_argument("--target", required=True)
-    regression.add_argument("--profile", default="system_profile.yaml")
+    regression.add_argument("--profile", default="target_profile.yaml")
 
     report = subparsers.add_parser("report")
     report.add_argument("--results", required=True)
@@ -72,28 +69,15 @@ def main() -> None:
     args = parser.parse_args()
     OUTPUT.mkdir(exist_ok=True)
 
-    if args.command == "analyze":
+    if args.command == "generate":
         profile = load_system_profile(args.profile)
-        surfaces = identify_attack_surfaces(profile)
-        write_jsonl(OUTPUT / "attack_surfaces.jsonl", [surface.model_dump() for surface in surfaces])
-        print(f"Found {len(surfaces)} attack surfaces. Wrote output/attack_surfaces.jsonl")
-
-    elif args.command == "generate":
-        profile = load_system_profile(args.profile)
-        surfaces = identify_attack_surfaces(profile)
-        if args.vulnerabilities:
-            requested = set()
-            for vulnerability in args.vulnerabilities:
-                if vulnerability == "prompt_injection":
-                    requested.update({"direct_prompt_injection", "indirect_prompt_injection"})
-                else:
-                    requested.add(normalize_vulnerability_id(vulnerability))
-            surfaces = [surface for surface in surfaces if normalize_vulnerability_id(surface.vulnerability) in requested]
-        tests = generate_seed_tests(profile, surfaces, args.tests_per_vulnerability, args.seed_templates)
+        vulnerabilities = resolve_vulnerability_scope(profile, args.vulnerabilities)
+        targets = build_vulnerability_targets(profile, vulnerabilities)
+        tests = generate_seed_tests(profile, targets, args.tests_per_vulnerability, args.seed_templates)
         if args.deepteam_baseline:
             runtime_config = load_runtime_config(args.runtime_config)
             runner = DeepTeamRunner(runtime_config)
-            baseline_tests = runner.generate_baseline_seed_tests(profile, surfaces, args.tests_per_vulnerability)
+            baseline_tests = runner.generate_baseline_seed_tests(profile, targets, args.tests_per_vulnerability)
             if runner.last_baseline_error:
                 print(f"DeepTeam baseline generation skipped: {runner.last_baseline_error}")
             tests.extend(baseline_tests)

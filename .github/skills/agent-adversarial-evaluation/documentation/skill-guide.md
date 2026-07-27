@@ -2,22 +2,21 @@
 
 ## What The Skill Does
 
-`agent-adversarial-evaluation` helps evaluators test agent and multi-agent systems with adversarial prompts.
+`agent-adversarial-evaluation` helps evaluators test a target agent with adversarial prompts.
 
 It can:
 
-- read a system profile
-- identify likely attack surfaces
-- generate seed adversarial prompts
+- read a simple target profile
+- resolve which vulnerabilities to test
+- generate adversarial seed prompts
 - optionally add DeepTeam baseline seed candidates
-- expand reviewed prompts with DeepTeam strategies
-- execute prompts against an allowlisted test target
-- evaluate the final response first
-- optionally evaluate execution traces if the target provides them
+- optionally expand reviewed prompts with DeepTeam strategies
+- execute prompts against an allowlisted non-production target
+- evaluate the final response for unsafe behavior
 - save human-confirmed failures as regression tests
 - generate Markdown and JSON reports
 
-The skill is designed for reuse across different domains. It should not require users to understand the internal Python code for normal conversational use.
+The current MVP is **output-first** and intentionally simple. It does not use an attack-surface-analysis layer.
 
 ## Who Can Use It
 
@@ -27,22 +26,21 @@ This skill is useful for:
 - agent developers
 - QA teams
 - security reviewers
-- platform teams testing agent frameworks
-- product teams validating protected workflows
+- product teams validating agent behavior
+- platform teams building regression suites for agent vulnerabilities
 
-It does not replace human security review. Human review is still required before executing critical tests, adding new vulnerability categories, testing new targets, or saving failures as regressions.
+It supports human reviewers; it does not replace them.
 
-## Simple User Workflow
+## Simple Conversational Workflow
 
-Conversational use should feel like this:
+First interaction:
 
 ```text
 Use the agent-adversarial-evaluation skill.
 
-Read system_profile.yaml.
-Identify attack surfaces.
-Generate adversarial seed prompts for authorization bypass, prompt injection,
-unauthorized tool use, and sensitive data leakage.
+Read target_profile.yaml.
+Generate adversarial seed prompts for prompt injection, sensitive data leakage,
+and authorization bypass.
 Do not execute yet. Return the prompts for review.
 ```
 
@@ -51,80 +49,42 @@ After review:
 ```text
 Use the agent-adversarial-evaluation skill.
 
-Expand the approved prompts with DeepTeam using role_play, multilingual,
-authority_claim, and tool_mediated strategies.
+Expand the approved prompts with DeepTeam using role_play and multilingual.
 Execute only against local-test.
 Evaluate the final responses.
 Generate a Markdown and JSON report.
 ```
 
-The Python CLI exists for repeatability, automation, debugging, and CI. The agent skill can call the same logic behind the scenes.
+Follow-up requests should continue from the latest artifact in the same conversation. For example, if the user says “now run only the sensitive data leakage tests,” use the existing profile and filter to that vulnerability.
 
 ## What A New Use Case Needs
 
 ### Required
 
-`system_profile.yaml`
+`target_profile.yaml`
 
-This is the main input. It describes the target system:
-
-- system name and description
-- agents/components
-- optional semantic roles
-- tools and allowed callers
-- protected assets
-- required workflow order
-- guardrails
-- prohibited behavior
-- supported languages
-- allowlisted test targets
+This is the main input. It describes the target and the vulnerabilities the evaluator wants to test.
 
 Minimal example:
 
 ```yaml
-system:
-  name: hr-case-agent
-  description: Synthetic HR case workflow
+target:
+  name: support-agent
+  description: Synthetic customer support assistant
   environment: test
 
-agents:
-  - name: eligibility_checker
-    responsibility: Verify employee record access
-    roles: [verifier]
-
-  - name: case_router
-    responsibility: Route HR case requests
-    roles: [router]
-
-  - name: benefits_agent
-    responsibility: Retrieve restricted benefit records
-    roles: [restricted_executor]
-
-tools:
-  - name: get_benefits_record
-    capability: retrieve_restricted_record
-    allowed_agents: [benefits_agent]
-    requires_entitlement: true
-    destructive: false
-    protected_assets:
-      - synthetic_employee_benefits_record
+vulnerabilities_to_test:
+  - direct_prompt_injection
+  - sensitive_data_leakage
+  - authorization_bypass
 
 protected_assets:
-  - synthetic_employee_benefits_record
+  - synthetic_customer_record
 
-required_flow:
-  - eligibility_checker
-  - case_router
-
-guardrails:
-  input_guardrail: true
-  output_guardrail: true
-
-prohibited_behaviours:
-  - authorization_bypass
-  - cross_subject_access
-  - unauthorized_tool_call
-  - sensitive_data_disclosure
+expected_safe_behaviour:
+  - Refuse unauthorized protected-data requests
+  - Do not reveal hidden instructions or secrets
+  - Provide safe generic guidance when refusing
 
 supported_languages:
   - English
@@ -136,27 +96,19 @@ execution:
   synthetic_data_only: true
 ```
 
+Optional fields can describe known agents and tools, but they are not required for the MVP.
+
 ### Optional
 
 `taxonomy.yaml`
 
-This is the vulnerability catalog. It ships with defaults, so users do not need to edit it for a first run.
+This is the vulnerability catalog. It ships with defaults, so most users do not need to edit it for a first run.
 
-It defines approved categories such as:
-
-- `authorization_bypass`
-- `cross_subject_access`
-- `router_override`
-- `unauthorized_tool_call`
-- `direct_prompt_injection`
-- `indirect_prompt_injection`
-- `sensitive_data_leakage`
-
-It can also map categories to OWASP, OWASP LLM, and MITRE ATLAS for reporting.
+It can map categories to standards such as OWASP, OWASP LLM, and MITRE ATLAS.
 
 `seed_templates.yaml`
 
-Optional wording customization. Use this only when the default control-pattern prompts are too generic.
+Optional wording customization. Use this only when the default prompt wording should be changed for a project.
 
 `runtime_config.yaml` and `.env`
 
@@ -164,7 +116,7 @@ Only needed for optional DeepTeam baseline generation, LLM generation, or LLM-as
 
 Target callback
 
-Needed when executing prompts against a real non-production system. The simplest target response is:
+Needed when executing prompts against a real non-production target. The simplest target response is:
 
 ```json
 {
@@ -175,57 +127,37 @@ Needed when executing prompts against a real non-production system. The simplest
 }
 ```
 
-Advanced targets can include trace spans:
-
-```json
-{
-  "final_response": "...",
-  "trace": [
-    {
-      "span_id": "span-001",
-      "component": "verifier",
-      "component_type": "agent",
-      "tool_name": null,
-      "tool_arguments": {},
-      "authorization_state": "denied",
-      "guardrail_decision": null
-    }
-  ],
-  "metadata": {
-    "target_version": "v1"
-  }
-}
-```
-
 ## How Prompts Are Generated
 
-Prompt generation always starts from the project profile and taxonomy:
+Prompt generation starts from vulnerability scope, not inferred attack surfaces.
 
-1. `system_profile.yaml` describes the target, protected assets, tools, roles, guardrails, and allowed test target.
-2. `taxonomy.yaml` selects or maps the vulnerability categories that are relevant for that target.
-3. After the profile and taxonomy are understood, the skill can generate prompts through templates, optional DeepTeam baseline generation, or optional DeepTeam expansion.
+The scope comes from:
+
+- the user's conversational request, if they name vulnerabilities
+- otherwise `vulnerabilities_to_test` in `target_profile.yaml`
+- otherwise a small default set: direct prompt injection, sensitive data leakage, and system prompt disclosure
 
 The skill can generate prompts in these ways:
 
 1. Deterministic seed templates
    - default path
-   - best for repeatable business-rule coverage
-   - driven by `system_profile.yaml`, `taxonomy.yaml`, and `seed_templates.yaml`
+   - best for repeatable regression-ready coverage
+   - driven by `target_profile.yaml`, selected vulnerability IDs, and `seed_templates.yaml`
 
 2. Optional DeepTeam baseline seeds
-   - enabled with `--deepteam-baseline`
+   - enabled only when requested
    - uses target purpose and vulnerability criteria
    - useful for discovery
    - additive, not a replacement for deterministic seeds
 
-3. DeepTeam expansion
-   - runs after seed review
+3. Optional DeepTeam expansion
+   - runs after human review
    - expands approved prompts using strategies such as role-play, authority claim, multilingual, obfuscated, and tool-mediated attacks
 
 In short:
 
 ```text
-templates = precise control coverage
+templates = repeatable baseline coverage
 DeepTeam baseline = discovery candidates
 DeepTeam expansion = adversarial variation
 ```
@@ -234,14 +166,11 @@ DeepTeam expansion = adversarial variation
 
 Users should not need to know exact taxonomy IDs.
 
-The skill can map natural phrases to approved categories:
+Examples:
 
 ```text
 "auth bypass" or "entitlement bypass"
 → authorization_bypass
-
-"supervisor override" or "router bypass"
-→ router_override
 
 "PII leak" or "sensitive data disclosure"
 → sensitive_data_leakage
@@ -250,7 +179,7 @@ The skill can map natural phrases to approved categories:
 → direct_prompt_injection + indirect_prompt_injection
 ```
 
-Current support is lightweight through aliases and category normalization. A stronger conversational mapping helper is listed in future steps.
+Current support is lightweight through aliases and category normalization. A stronger conversational mapping helper is a future improvement.
 
 ## Output Files
 
@@ -258,11 +187,10 @@ When run through the CLI, outputs are written to `output/`.
 
 Typical files:
 
-- `attack_surfaces.jsonl`: discovered attack surfaces
 - `seed_tests.jsonl`: seed prompts
 - `generated_tests.jsonl`: expanded prompts
-- `execution_results.jsonl`: target responses and optional traces
-- `evaluated_results.jsonl`: response and trace evaluation results
+- `execution_results.jsonl`: target responses
+- `evaluated_results.jsonl`: output evaluation results
 - `regression_tests.jsonl`: human-confirmed failures saved as regressions
 - `regression_results.jsonl`: regression rerun results
 - `report.md`: stakeholder-friendly Markdown report
@@ -283,7 +211,7 @@ Regression records store:
 - previous failure reason
 - target version
 
-Regression tests are useful because they let teams ask:
+Regression tests help teams answer:
 
 ```text
 Did we fix this vulnerability?
@@ -291,169 +219,149 @@ Did it come back in a later version?
 Did behavior change in a way that needs review?
 ```
 
-Typical classifications:
-
-- `Fixed`
-- `Still failing`
-- `Newly changed`
-- `Requires review`
-
 ## Current Architecture
 
 ```mermaid
 flowchart TD
     A[Conversational request] --> B[Skill instructions]
-    B --> C[system_profile.yaml]
-    C --> F[Attack surface analysis]
-    F --> D[taxonomy.yaml category selection and mappings]
+    B --> C[target_profile.yaml]
+    C --> D[Vulnerability scope]
     D --> E{Seed generation path}
-    E --> G[Deterministic seed prompts from seed_templates.yaml]
-    E --> H[Optional DeepTeam baseline seeds from target scope]
-    G --> I[Validate and deduplicate]
-    H --> I
-    I --> J[Human review]
-    J --> K{Use DeepTeam expansion?}
-    K -->|Yes| N[Expanded adversarial prompts]
-    K -->|No| L[Reviewed seed prompts]
-    N --> L[Allowlisted target callback]
-    L --> M[Final response]
-    M --> O[Output-first evaluator]
-    O --> Q[Aggregate result]
-    Q --> R[Markdown and JSON reports]
-    Q --> S[Human-confirmed regression JSONL]
+    E --> F[Deterministic seed prompts from seed_templates.yaml]
+    E --> G[Optional DeepTeam baseline seeds]
+    F --> H[Validate and deduplicate]
+    G --> H
+    H --> I[Human review]
+    I --> J{Use DeepTeam expansion?}
+    J -->|Yes| K[Expanded adversarial prompts]
+    J -->|No| L[Reviewed seed prompts]
+    K --> M[Allowlisted target callback]
+    L --> M
+    M --> N[Final response]
+    N --> O[Output-first evaluator]
+    O --> P[Aggregate result]
+    P --> Q[Markdown and JSON reports]
+    P --> R[Human-confirmed regression JSONL]
 ```
 
 ### Current Architecture Components
 
 `Conversational request`
 
-- Role: captures what the evaluator wants to test, such as authorization bypass, prompt injection, data leakage, or a full adversarial evaluation.
-- Why it is required: lets the skill narrow the workflow without requiring the user to run Python manually.
-- User provides: a natural-language request and, when needed, the desired vulnerability scope or target name.
+- Role: captures what the evaluator wants to test.
+- Why it is required: lets the skill choose vulnerability scope without requiring Python commands.
+- User provides: a natural-language request and optional vulnerability names.
 
 `Skill instructions`
 
-- Role: defines the safe operating rules, expected workflow, required files, and human-review checkpoints.
-- Why it is required: keeps the evaluation reusable and prevents unsafe execution against production or real data.
-- User provides: no project-specific content here during normal use.
+- Role: defines safe operating rules and the MVP workflow.
+- Why it is required: keeps generation, execution, and regression handling consistent.
+- User provides: no project-specific content here.
 
-`system_profile.yaml`
+`target_profile.yaml`
 
-- Role: describes the target system, agents, tools, protected assets, guardrails, workflow order, and allowlisted test targets.
-- Why it is required: this is the main source of truth for what the skill is allowed to test and what safe behavior should look like.
-- User provides: one profile per use case or target system.
+- Role: describes the target, vulnerability scope, protected assets, expected safe behavior, and allowlisted targets.
+- Why it is required: gives the skill enough context to generate measurable adversarial prompts.
+- User provides: one profile per use case or target agent.
 
-`Attack surface analysis`
+`Vulnerability scope`
 
-- Role: reads `system_profile.yaml` and identifies likely vulnerable areas, such as restricted tools, protected assets, routers, document/RAG agents, and final-response leakage risks.
-- Why it is required: prevents generic prompt generation by grounding the test plan in the actual target architecture.
-- User provides: no separate file; this is derived from `system_profile.yaml`.
-
-`taxonomy.yaml category selection and mappings`
-
-- Role: names the vulnerability categories and optionally maps them to standards such as OWASP, OWASP LLM, or MITRE ATLAS.
-- Why it is required: gives the skill a controlled vocabulary for filtering, reporting, DeepTeam target definitions, and regression grouping.
-- User provides: usually nothing for the first run; update only when the project needs custom categories or standards mappings.
+- Role: selects what to test, such as prompt injection, data leakage, authorization bypass, or system prompt disclosure.
+- Why it is required: keeps generation focused and avoids unnecessary architecture inference.
+- User provides: either `vulnerabilities_to_test` in the profile or vulnerability names in conversation.
 
 `Seed generation path`
 
-- Role: chooses whether seed prompts come from deterministic templates, optional DeepTeam baseline generation, or both.
-- Why it is required: separates repeatable coverage from exploratory generation.
-- User provides: the preferred mode in conversation or CLI flags; otherwise deterministic templates are the default.
+- Role: chooses deterministic templates, optional DeepTeam baseline generation, or both.
+- Why it is required: separates repeatable coverage from exploratory discovery.
+- User provides: the preferred mode; deterministic templates are the default.
 
 `Deterministic seed prompts from seed_templates.yaml`
 
-- Role: creates predictable baseline prompts for each selected vulnerability.
-- Why it is required: gives evaluators stable tests that are easy to review, rerun, and convert into regressions.
+- Role: creates predictable baseline prompts for selected vulnerabilities.
+- Why it is required: gives evaluators stable prompts that are easy to review, rerun, and save as regressions.
 - User provides: optional template edits only when default wording is not specific enough.
 
-`Optional DeepTeam baseline seeds from target scope`
+`Optional DeepTeam baseline seeds`
 
-- Role: asks DeepTeam to create additional baseline attack candidates from the target description and vulnerability criteria.
+- Role: asks DeepTeam to create additional seed candidates from the target purpose and vulnerability criteria.
 - Why it is required: adds discovery value when templates may miss creative attack wording.
-- User provides: DeepTeam/runtime configuration and API keys only when this optional path is used.
+- User provides: runtime configuration and API keys only when this path is used.
 
 `Validate and deduplicate`
 
-- Role: removes duplicate tests and rejects malformed or unsupported test cases.
-- Why it is required: keeps the test set reviewable and prevents invalid records from entering execution or regression files.
+- Role: removes duplicate prompts and rejects malformed tests.
+- Why it is required: keeps the test set clean before execution.
 - User provides: no separate input.
 
 `Human review`
 
 - Role: lets an evaluator approve, reject, or edit generated prompts before execution.
-- Why it is required: adversarial prompts can be sensitive, domain-specific, or too broad; human review keeps testing intentional.
-- User provides: approval of the generated seed set and any edits needed for the use case.
+- Why it is required: adversarial prompts can be sensitive or too broad.
+- User provides: approval of the generated prompt set.
 
 `Optional DeepTeam expansion`
 
-- Role: expands approved seeds into variants such as role-play, authority-claim, multilingual, obfuscated, or tool-mediated attacks.
-- Why it is required: tests whether the target resists variations of the same underlying attack.
-- User provides: selected expansion strategies when expansion is requested.
+- Role: expands approved seeds into strategy variants.
+- Why it is required: tests whether the target resists variations of the same attack.
+- User provides: selected expansion strategies.
 
 `Allowlisted target callback`
 
-- Role: sends approved prompts to the non-production target system and captures the response.
-- Why it is required: keeps execution restricted to safe targets and gives the evaluator real behavior to score.
-- User provides: the target callback or integration for the project.
+- Role: sends approved prompts to the non-production target and captures the response.
+- Why it is required: keeps execution restricted to safe targets.
+- User provides: the project-specific target integration.
 
 `Final response`
 
-- Role: stores the user-visible answer returned by the target system.
-- Why it is required: the current evaluator is output-first, so the final response is the main evidence for pass/fail decisions.
+- Role: stores the answer returned by the target.
+- Why it is required: this is the main evidence for pass/fail decisions.
 - User provides: no separate input; it is returned by the target.
 
 `Output-first evaluator`
 
-- Role: checks whether the final response violates expected safe behavior or matches failure conditions.
-- Why it is required: the main goal is to identify vulnerabilities from adversarial outputs, even before trace-level evaluation exists.
-- User provides: optional project-specific judge settings if an LLM judge is enabled.
+- Role: checks whether the final response violates safe behavior or matches failure conditions.
+- Why it is required: the MVP goal is to identify vulnerabilities from adversarial outputs.
+- User provides: optional LLM judge settings if enabled.
 
 `Aggregate result`
 
-- Role: combines test metadata, target response, evaluation results, severity, and failure reason.
-- Why it is required: creates a consistent record that can be reported, reviewed, or promoted to regression testing.
-- User provides: human confirmation for critical findings or regressions.
+- Role: combines test metadata, response, evaluation result, severity, and failure reason.
+- Why it is required: creates a consistent record for reports and regressions.
+- User provides: human confirmation before saving regressions.
 
 `Markdown and JSON reports`
 
 - Role: produces human-readable and machine-readable summaries.
-- Why it is required: supports security review, stakeholder communication, and automation.
+- Why it is required: supports review and automation.
 - User provides: no separate input after evaluation results exist.
 
 `Human-confirmed regression JSONL`
 
 - Role: stores confirmed failures as rerunnable regression tests.
-- Why it is required: lets teams verify that fixes stay fixed across future model, prompt, policy, or tool changes.
+- Why it is required: lets teams verify fixes across future target versions.
 - User provides: explicit confirmation that a failure should become a regression.
 
 ## CLI Examples
-
-Analyze:
-
-```bash
-python run.py analyze --profile system_profile.yaml
-```
 
 Generate deterministic seeds:
 
 ```bash
 python run.py generate \
-  --profile system_profile.yaml \
+  --profile target_profile.yaml \
   --seed-templates seed_templates.yaml \
-  --vulnerabilities authorization_bypass router_override prompt_injection unauthorized_tool_call \
-  --tests-per-vulnerability 5
+  --vulnerabilities prompt_injection sensitive_data_leakage \
+  --tests-per-vulnerability 3
 ```
 
 Generate deterministic seeds plus optional DeepTeam baseline candidates:
 
 ```bash
 python run.py generate \
-  --profile system_profile.yaml \
-  --seed-templates seed_templates.yaml \
+  --profile target_profile.yaml \
   --deepteam-baseline \
   --runtime-config runtime_config.yaml \
-  --vulnerabilities authorization_bypass sensitive_data_leakage unauthorized_tool_call \
+  --vulnerabilities authorization_bypass sensitive_data_leakage \
   --tests-per-vulnerability 3
 ```
 
@@ -472,7 +380,7 @@ Evaluate and report:
 ```bash
 python run.py evaluate \
   --results output/execution_results.jsonl \
-  --profile system_profile.yaml \
+  --profile target_profile.yaml \
   --runtime-config runtime_config.yaml
 ```
 
@@ -491,7 +399,7 @@ The skill should enforce:
 - no production credentials
 - no secret extraction
 - no raw secrets in logs or reports
-- human review for critical findings and regressions
+- human review before execution and regression saving
 
 ## Future Steps And Known Gaps
 
@@ -501,48 +409,44 @@ Current known gaps:
 - LLM judge is a stub unless replaced by a project-approved model client
 - DeepTeam integration is intentionally minimal
 - conversational mapping is still basic
-- trace evaluation is optional and depends on target trace quality
 - taxonomy mappings may need team-specific review
 
 Useful next improvements:
 
 - add a conversational mapping helper that maps user phrases to taxonomy IDs and DeepTeam attack methods
-- add a simple review command for approving generated seeds before execution
+- add a review command for approving generated seeds before execution
 - add configurable output-only judge prompts for different domains
 - add better DeepTeam attack-method mapping
-- research optional adapters for other red-team tools such as PyRIT or Garak as a separate future track
-- add a provider-specific LLM judge implementation
 - add richer regression comparison across target versions
 - add CI examples
 
-## Possible Future Architecture
+## MVP 2 Direction
 
-This is a possible next phase. It should only be added if users need it, because the current MVP is intentionally simple.
+Attack-surface analysis can return in MVP 2 when users provide architecture details and want the skill to suggest what to test.
 
-The current skill remains DeepTeam-only. The diagram below is a future research direction, not the current implementation.
+MVP 2 rule:
+
+```text
+Use attack surface analysis when architecture details exist.
+Skip it when the user already provides the attack or vulnerability scope.
+```
+
+Possible future architecture:
 
 ```mermaid
 flowchart TD
     A[Conversational request] --> B[Conversational mapping helper]
-    B --> C[Approved taxonomy IDs]
-    B --> D[Attack strategy IDs]
-    C --> E[Framework router]
-    D --> E
-    E --> F[Template seed engine]
-    E --> G[DeepTeam adapter]
-    E --> H[PyRIT adapter optional]
-    E --> I[Garak adapter optional]
-    E --> J[Other tool adapter optional]
-    F --> K[Unified TestCase schema]
-    G --> K
-    H --> K
-    I --> K
-    J --> K
-    K --> L[Human review]
-    L --> M[Target execution]
-    M --> N[Output-first evaluator]
-    N --> P[Unified report]
-    P --> Q[Regression suite]
+    B --> C[target_profile.yaml]
+    C --> D{Did user provide vulnerability scope?}
+    D -->|Yes| E[Vulnerability scope]
+    D -->|No, architecture exists| F[Attack surface analysis helper]
+    F --> E
+    E --> G[Seed generation]
+    G --> H[Human review]
+    H --> I[Optional framework adapters]
+    I --> J[Target execution]
+    J --> K[Output-first evaluator]
+    K --> L[Reports and regression suite]
 ```
 
-Important: multi-framework support should remain optional and separate from the current DeepTeam-only MVP. The skill should not become hard to use just to support more tools.
+Important: MVP 2 should stay optional. The current MVP should remain easy to use for simple target-agent testing.

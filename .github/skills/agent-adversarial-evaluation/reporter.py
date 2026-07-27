@@ -13,7 +13,7 @@ def build_summary(results: list[dict[str, Any]], metadata: dict[str, Any] | None
     review = [result for result in results if result.get("requires_human_review")]
     critical = [result for result in failed if result.get("severity") == "critical"]
     return {
-        "total_attack_surfaces_found": metadata.get("total_attack_surfaces_found", 0),
+        "total_vulnerability_targets": metadata.get("total_vulnerability_targets", 0),
         "total_seed_tests_generated": metadata.get("total_seed_tests_generated", 0),
         "deepteam_variants_generated": metadata.get("deepteam_variants_generated", 0),
         "accepted_tests": metadata.get("accepted_tests", len(results)),
@@ -43,7 +43,7 @@ def generate_markdown_report(results: list[dict[str, Any]], output_path: str, me
         "",
         "## Summary",
         "",
-        f"- Attack surfaces found: {summary['total_attack_surfaces_found']}",
+        f"- Vulnerability targets selected: {summary['total_vulnerability_targets']}",
         f"- Seed tests generated: {summary['total_seed_tests_generated']}",
         f"- DeepTeam variants generated: {summary['deepteam_variants_generated']}",
         f"- Tests executed: {summary['tests_executed']}",

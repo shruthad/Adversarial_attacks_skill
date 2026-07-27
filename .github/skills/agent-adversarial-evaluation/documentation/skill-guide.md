@@ -38,7 +38,6 @@ The current MVP:
 - does not run attack-surface analysis as a current or optional MVP step
 - generates prompts from vulnerabilities named by the user or listed in `target_profile.yaml`
 - evaluates the target's final response first
-- keeps architecture-based attack-surface analysis for MVP 2 only
 
 MVP decision rule:
 
@@ -52,6 +51,16 @@ Do not infer attack surfaces from architecture in the current MVP.
 Default starter scope:
 
 - `direct_prompt_injection`
+- `sensitive_data_leakage`
+- `system_prompt_disclosure`
+
+Supported MVP vulnerability IDs:
+
+- `authorization_bypass`
+- `cross_subject_access`
+- `cross_subject_data_leakage`
+- `direct_prompt_injection`
+- `indirect_prompt_injection`
 - `sensitive_data_leakage`
 - `system_prompt_disclosure`
 
@@ -301,6 +310,92 @@ flowchart TD
     P --> R[Human-confirmed regression JSONL]
 ```
 
+### Current Architecture Components
+
+`Conversational request`
+
+- Role: captures the evaluator's intent, such as which vulnerabilities to test.
+- Why it is required: lets the skill work conversationally without forcing the user to run commands manually.
+- User provides: a natural-language request and optional vulnerability names.
+
+`target_profile.yaml`
+
+- Role: stores the target purpose, protected synthetic assets, expected safe behavior, vulnerability defaults, and allowlisted test targets.
+- Why it is required: gives the skill stable context for prompt generation and output evaluation.
+- User provides: one small profile per target or use case.
+
+`Vulnerability scope`
+
+- Role: decides which vulnerability IDs will be tested.
+- Why it is required: keeps prompt generation focused and predictable.
+- User provides: vulnerabilities in conversation or `vulnerabilities_to_test` in `target_profile.yaml`.
+
+`Deterministic seed prompts`
+
+- Role: creates repeatable baseline adversarial prompts from `seed_templates.yaml` or built-in templates.
+- Why it is required: gives evaluators stable tests that can become regression cases.
+- User provides: optional template edits only when the defaults need project-specific wording.
+
+`Optional DeepTeam baseline seeds`
+
+- Role: adds DeepTeam-generated discovery candidates for the selected vulnerabilities.
+- Why it is required: broadens prompt wording beyond deterministic templates.
+- User provides: DeepTeam/runtime configuration and API keys only when requested.
+
+`Validate and deduplicate`
+
+- Role: removes duplicate prompts and rejects malformed tests.
+- Why it is required: prevents bad test records from moving into execution.
+- User provides: no separate input.
+
+`Human review`
+
+- Role: lets the evaluator approve, reject, or edit generated prompts before execution.
+- Why it is required: adversarial prompts and findings need human judgment.
+- User provides: approval before execution and before saving regressions.
+
+`Optional DeepTeam expansion`
+
+- Role: creates strategy variants from approved seeds.
+- Why it is required: checks whether the target fails under different phrasings of the same attack.
+- User provides: expansion strategies such as `role_play`, `multilingual`, or `tool_mediated`.
+
+`Allowlisted target callback`
+
+- Role: sends prompts to the approved non-production target and captures the response.
+- Why it is required: keeps execution controlled and safe.
+- User provides: the project-specific callback or integration.
+
+`Final response`
+
+- Role: stores the answer returned by the target.
+- Why it is required: this is the evidence the MVP evaluator checks.
+- User provides: no separate input; it comes from the target.
+
+`Output-first evaluator`
+
+- Role: evaluates unsafe compliance, protected data leakage, system-prompt disclosure, and weak refusal behavior.
+- Why it is required: identifies vulnerabilities from observable output.
+- User provides: optional LLM judge settings when enabled.
+
+`Aggregate result`
+
+- Role: combines test metadata, target response, pass/fail status, severity, root cause, and recommended action.
+- Why it is required: provides a consistent record for reports and regression tests.
+- User provides: human confirmation before saving failures as regressions.
+
+`Markdown and JSON reports`
+
+- Role: produces human-readable and machine-readable results.
+- Why it is required: supports stakeholder review and automation.
+- User provides: no separate input after evaluation.
+
+`Human-confirmed regression JSONL`
+
+- Role: stores confirmed failures as rerunnable regression tests.
+- Why it is required: helps teams check whether vulnerabilities are fixed or reintroduced.
+- User provides: explicit confirmation that a failed case should be saved.
+
 ## CLI Examples
 
 Generate deterministic seeds:
@@ -332,6 +427,15 @@ python run.py expand \
   --runtime-config runtime_config.yaml \
   --strategies direct role_play multilingual tool_mediated \
   --variants-per-strategy 2
+```
+
+Execute approved tests:
+
+```bash
+python run.py execute \
+  --tests output/generated_tests.jsonl \
+  --profile target_profile.yaml \
+  --target local-test
 ```
 
 Evaluate and report:
@@ -378,34 +482,3 @@ Useful next improvements:
 - add better DeepTeam attack-method mapping
 - add richer regression comparison across target versions
 - add CI examples
-
-## MVP 2 Direction
-
-Attack-surface analysis can return in MVP 2 when users provide architecture details and want the skill to suggest what to test. It is not part of the current MVP and should not be presented as an optional current path.
-
-MVP 2 rule:
-
-```text
-Use attack surface analysis when architecture details exist.
-Skip it when the user already provides the attack or vulnerability scope.
-```
-
-Possible future architecture:
-
-```mermaid
-flowchart TD
-    A[Conversational request] --> B[Conversational mapping helper]
-    B --> C[target_profile.yaml]
-    C --> D{Did user provide vulnerability scope?}
-    D -->|Yes| E[Vulnerability scope]
-    D -->|No, architecture exists| F[Attack surface analysis helper]
-    F --> E
-    E --> G[Seed generation]
-    G --> H[Human review]
-    H --> I[Optional framework adapters]
-    I --> J[Target execution]
-    J --> K[Output-first evaluator]
-    K --> L[Reports and regression suite]
-```
-
-Important: MVP 2 should stay optional. The current MVP should remain easy to use for simple target-agent testing.

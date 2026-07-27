@@ -18,6 +18,14 @@ It can:
 
 The current MVP is **output-first** and intentionally simple. It does not use an attack-surface-analysis layer.
 
+Current MVP boundary:
+
+- use `target_profile.yaml`, not `system_profile.yaml`
+- do not require agent architecture, routers, classifiers, tools, traces, or workflow diagrams
+- do not run attack-surface analysis as a current or optional MVP step
+- generate prompts from the vulnerability scope selected by the user or listed in `target_profile.yaml`
+- keep architecture-based attack-surface analysis for MVP 2 only
+
 ## Who Can Use It
 
 This skill is useful for:
@@ -96,7 +104,7 @@ execution:
   synthetic_data_only: true
 ```
 
-Optional fields can describe known agents and tools, but they are not required for the MVP.
+Advanced compatibility fields may exist in the code, but a normal MVP user should not need to provide agents, tools, roles, routing flow, traces, or architecture details.
 
 ### Optional
 
@@ -422,7 +430,7 @@ Useful next improvements:
 
 ## MVP 2 Direction
 
-Attack-surface analysis can return in MVP 2 when users provide architecture details and want the skill to suggest what to test.
+Attack-surface analysis can return in MVP 2 when users provide architecture details and want the skill to suggest what to test. It is not part of the current MVP and should not be presented as an optional current path.
 
 MVP 2 rule:
 

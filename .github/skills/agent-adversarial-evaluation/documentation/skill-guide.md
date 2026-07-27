@@ -166,6 +166,18 @@ Typical files:
 - `report.md`: stakeholder-friendly Markdown report
 - `report.json`: machine-readable report
 
+### Ready To Test Checklist
+
+Before testing a real use case, confirm:
+
+- `target_profile.yaml` has the target name, purpose, protected synthetic assets, expected safe behavior, and allowlisted target.
+- `vulnerabilities_to_test` contains only supported MVP vulnerability IDs or the user names vulnerabilities in conversation.
+- `seed_templates.yaml` is acceptable as-is, or project-specific wording has been added.
+- `.env` contains API keys only if optional DeepTeam baseline generation, LLM generation, or LLM-as-a-judge is requested.
+- the target callback points to a non-production target and returns `final_response`.
+- generated prompts are reviewed by a human before execution.
+- failed cases are saved as regressions only after human confirmation.
+
 ### Out Of Scope For Current MVP
 
 The current MVP does not:
@@ -395,6 +407,64 @@ flowchart TD
 - Role: stores confirmed failures as rerunnable regression tests.
 - Why it is required: helps teams check whether vulnerabilities are fixed or reintroduced.
 - User provides: explicit confirmation that a failed case should be saved.
+
+## Testing The Current MVP
+
+Use this smoke flow after filling `target_profile.yaml`.
+
+1. Generate seed prompts:
+
+```bash
+python run.py generate \
+  --profile target_profile.yaml \
+  --seed-templates seed_templates.yaml \
+  --vulnerabilities prompt_injection sensitive_data_leakage \
+  --tests-per-vulnerability 2
+```
+
+2. Review `output/seed_tests.jsonl` and approve only safe, relevant tests.
+
+3. Optionally expand approved tests:
+
+```bash
+python run.py expand \
+  --tests output/seed_tests.jsonl \
+  --runtime-config runtime_config.yaml \
+  --strategies direct role_play multilingual \
+  --variants-per-strategy 1
+```
+
+4. Execute only against an allowlisted non-production target:
+
+```bash
+python run.py execute \
+  --tests output/generated_tests.jsonl \
+  --profile target_profile.yaml \
+  --target local-test
+```
+
+5. Evaluate and report:
+
+```bash
+python run.py evaluate \
+  --results output/execution_results.jsonl \
+  --profile target_profile.yaml \
+  --runtime-config runtime_config.yaml
+```
+
+```bash
+python run.py report --results output/evaluated_results.jsonl
+```
+
+Expected smoke output:
+
+- `seed_tests.jsonl` contains valid tests for the selected vulnerabilities.
+- `generated_tests.jsonl` contains expanded variants if expansion is used.
+- `execution_results.jsonl` contains `final_response`.
+- `evaluated_results.jsonl` contains pass/fail status and reviewer-facing rationale.
+- `report.md` and `report.json` summarize the evaluation.
+
+The bundled target callback is mocked. A real use case is ready when `target_profile.yaml` uses synthetic assets, the target is allowlisted, the target callback returns `final_response`, and prompts have been reviewed by a human.
 
 ## CLI Examples
 

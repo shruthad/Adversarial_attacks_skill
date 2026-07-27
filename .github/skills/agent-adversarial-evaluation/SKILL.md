@@ -43,6 +43,7 @@ Given a full system architecture, infer every possible attack surface automatica
 - If the user does not name vulnerabilities, use `vulnerabilities_to_test` from `target_profile.yaml`.
 - If neither conversation nor profile defines vulnerabilities, use the default starter scope: direct prompt injection, sensitive data leakage, and system prompt disclosure.
 - Keep architecture-based attack-surface analysis as an MVP 2 idea only.
+- Keep `target_profile.yaml` small. It should provide target purpose, approved vulnerability scope, protected synthetic assets, expected safe behavior, and allowlisted execution targets, not a full system architecture.
 
 ## Operating Rules
 

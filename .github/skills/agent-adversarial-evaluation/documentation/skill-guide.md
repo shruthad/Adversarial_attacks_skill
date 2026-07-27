@@ -26,6 +26,14 @@ Current MVP boundary:
 - generate prompts from the vulnerability scope selected by the user or listed in `target_profile.yaml`
 - keep architecture-based attack-surface analysis for MVP 2 only
 
+MVP decision rule:
+
+```text
+If the user names vulnerabilities, use those directly.
+Otherwise, use vulnerabilities_to_test from target_profile.yaml.
+Do not infer attack surfaces from architecture in the current MVP.
+```
+
 ## Who Can Use It
 
 This skill is useful for:
@@ -72,6 +80,8 @@ Follow-up requests should continue from the latest artifact in the same conversa
 `target_profile.yaml`
 
 This is the main input. It describes the target and the vulnerabilities the evaluator wants to test.
+
+It is still required because the skill needs a small amount of stable project context: target purpose, approved vulnerability scope, protected synthetic assets, expected safe behavior, and allowlisted execution target. It should not become a full architecture document.
 
 Minimal example:
 

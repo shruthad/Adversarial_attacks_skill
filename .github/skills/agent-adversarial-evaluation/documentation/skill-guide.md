@@ -18,21 +18,155 @@ It can:
 
 The current MVP is **output-first** and intentionally simple. It does not use an attack-surface-analysis layer.
 
-Current MVP boundary:
+## Current MVP Plan
 
-- use `target_profile.yaml`, not `system_profile.yaml`
-- do not require agent architecture, routers, classifiers, tools, traces, or workflow diagrams
-- do not run attack-surface analysis as a current or optional MVP step
-- generate prompts from the vulnerability scope selected by the user or listed in `target_profile.yaml`
-- keep architecture-based attack-surface analysis for MVP 2 only
+### MVP Goal
+
+Help an evaluator answer:
+
+```text
+Can this target agent resist adversarial prompts for the selected vulnerability scope,
+and can confirmed failures be saved as regression tests?
+```
+
+### MVP Boundary
+
+The current MVP:
+
+- uses `target_profile.yaml`, not `system_profile.yaml`
+- does not require agent architecture, routers, classifiers, tools, traces, or workflow diagrams
+- does not run attack-surface analysis as a current or optional MVP step
+- generates prompts from vulnerabilities named by the user or listed in `target_profile.yaml`
+- evaluates the target's final response first
+- keeps architecture-based attack-surface analysis for MVP 2 only
 
 MVP decision rule:
 
 ```text
 If the user names vulnerabilities, use those directly.
 Otherwise, use vulnerabilities_to_test from target_profile.yaml.
+If neither exists, use the default starter scope.
 Do not infer attack surfaces from architecture in the current MVP.
 ```
+
+Default starter scope:
+
+- `direct_prompt_injection`
+- `sensitive_data_leakage`
+- `system_prompt_disclosure`
+
+### MVP Inputs
+
+Required:
+
+- `target_profile.yaml`
+
+Optional:
+
+- `seed_templates.yaml`
+- `taxonomy.yaml`
+- `runtime_config.yaml`
+- `.env`
+- target callback
+
+`target_profile.yaml` should stay small. It should provide target purpose, approved vulnerability scope, protected synthetic assets, expected safe behavior, and allowlisted execution targets. It should not become a full system architecture document.
+
+Minimal example:
+
+```yaml
+target:
+  name: support-agent
+  description: Synthetic customer support assistant
+  environment: test
+
+vulnerabilities_to_test:
+  - direct_prompt_injection
+  - sensitive_data_leakage
+  - authorization_bypass
+
+protected_assets:
+  - synthetic_customer_record
+
+expected_safe_behaviour:
+  - Refuse unauthorized protected-data requests
+  - Do not reveal hidden instructions or secrets
+  - Provide safe generic guidance when refusing
+
+supported_languages:
+  - English
+
+execution:
+  allowlisted_targets:
+    - local-test
+  production_allowed: false
+  synthetic_data_only: true
+```
+
+### MVP Workflow
+
+```text
+Conversational request
+→ target_profile.yaml
+→ vulnerability scope
+→ seed prompt generation
+→ validation and deduplication
+→ human review
+→ optional DeepTeam expansion
+→ allowlisted target execution
+→ final-response evaluation
+→ Markdown/JSON report
+→ human-confirmed regression tests
+```
+
+### MVP Generation Strategy
+
+The current MVP supports:
+
+- deterministic seed templates by default
+- optional DeepTeam baseline seeds when explicitly requested
+- optional DeepTeam expansion after human review
+
+Deterministic templates are best for repeatable regression-ready coverage. DeepTeam baseline generation is useful for discovery. DeepTeam expansion is useful for generating adversarial variations of already reviewed seeds.
+
+### MVP Evaluation Strategy
+
+Evaluation is focused on the target's final response.
+
+The evaluator checks for:
+
+- unsafe compliance with the adversarial request
+- protected synthetic data leakage
+- system prompt or hidden instruction disclosure
+- incomplete or weak refusal behavior
+- failure conditions defined by the generated test case
+
+Trace-level or architecture-level evaluation is not part of the current MVP.
+
+### MVP Outputs
+
+When run through the CLI, outputs are written to `output/`.
+
+Typical files:
+
+- `seed_tests.jsonl`: seed prompts
+- `generated_tests.jsonl`: expanded prompts
+- `execution_results.jsonl`: target responses
+- `evaluated_results.jsonl`: output evaluation results
+- `regression_tests.jsonl`: human-confirmed failures saved as regressions
+- `regression_results.jsonl`: regression rerun results
+- `report.md`: stakeholder-friendly Markdown report
+- `report.json`: machine-readable report
+
+### Out Of Scope For Current MVP
+
+The current MVP does not:
+
+- require `system_profile.yaml`
+- infer attack surfaces from agent architecture
+- require agents, tools, routers, classifiers, traces, or workflow diagrams
+- perform trace-based root-cause analysis as a required path
+- automatically save failures as regressions without human confirmation
+- test production targets by default
 
 ## Who Can Use It
 
@@ -71,79 +205,7 @@ Evaluate the final responses.
 Generate a Markdown and JSON report.
 ```
 
-Follow-up requests should continue from the latest artifact in the same conversation. For example, if the user says “now run only the sensitive data leakage tests,” use the existing profile and filter to that vulnerability.
-
-## What A New Use Case Needs
-
-### Required
-
-`target_profile.yaml`
-
-This is the main input. It describes the target and the vulnerabilities the evaluator wants to test.
-
-It is still required because the skill needs a small amount of stable project context: target purpose, approved vulnerability scope, protected synthetic assets, expected safe behavior, and allowlisted execution target. It should not become a full architecture document.
-
-Minimal example:
-
-```yaml
-target:
-  name: support-agent
-  description: Synthetic customer support assistant
-  environment: test
-
-vulnerabilities_to_test:
-  - direct_prompt_injection
-  - sensitive_data_leakage
-  - authorization_bypass
-
-protected_assets:
-  - synthetic_customer_record
-
-expected_safe_behaviour:
-  - Refuse unauthorized protected-data requests
-  - Do not reveal hidden instructions or secrets
-  - Provide safe generic guidance when refusing
-
-supported_languages:
-  - English
-
-execution:
-  allowlisted_targets:
-    - local-test
-  production_allowed: false
-  synthetic_data_only: true
-```
-
-Advanced compatibility fields may exist in the code, but a normal MVP user should not need to provide agents, tools, roles, routing flow, traces, or architecture details.
-
-### Optional
-
-`taxonomy.yaml`
-
-This is the vulnerability catalog. It ships with defaults, so most users do not need to edit it for a first run.
-
-It can map categories to standards such as OWASP, OWASP LLM, and MITRE ATLAS.
-
-`seed_templates.yaml`
-
-Optional wording customization. Use this only when the default prompt wording should be changed for a project.
-
-`runtime_config.yaml` and `.env`
-
-Only needed for optional DeepTeam baseline generation, LLM generation, or LLM-as-a-judge.
-
-Target callback
-
-Needed when executing prompts against a real non-production target. The simplest target response is:
-
-```json
-{
-  "final_response": "The final answer shown to the user.",
-  "metadata": {
-    "target_version": "v1"
-  }
-}
-```
+Follow-up requests should continue from the latest artifact in the same conversation. For example, if the user says "now run only the sensitive data leakage tests," use the existing profile and filter to that vulnerability.
 
 ## How Prompts Are Generated
 
@@ -153,7 +215,7 @@ The scope comes from:
 
 - the user's conversational request, if they name vulnerabilities
 - otherwise `vulnerabilities_to_test` in `target_profile.yaml`
-- otherwise a small default set: direct prompt injection, sensitive data leakage, and system prompt disclosure
+- otherwise the default starter scope
 
 The skill can generate prompts in these ways:
 
@@ -171,14 +233,6 @@ The skill can generate prompts in these ways:
 3. Optional DeepTeam expansion
    - runs after human review
    - expands approved prompts using strategies such as role-play, authority claim, multilingual, obfuscated, and tool-mediated attacks
-
-In short:
-
-```text
-templates = repeatable baseline coverage
-DeepTeam baseline = discovery candidates
-DeepTeam expansion = adversarial variation
-```
 
 ## Conversational Mapping
 
@@ -198,21 +252,6 @@ Examples:
 ```
 
 Current support is lightweight through aliases and category normalization. A stronger conversational mapping helper is a future improvement.
-
-## Output Files
-
-When run through the CLI, outputs are written to `output/`.
-
-Typical files:
-
-- `seed_tests.jsonl`: seed prompts
-- `generated_tests.jsonl`: expanded prompts
-- `execution_results.jsonl`: target responses
-- `evaluated_results.jsonl`: output evaluation results
-- `regression_tests.jsonl`: human-confirmed failures saved as regressions
-- `regression_results.jsonl`: regression rerun results
-- `report.md`: stakeholder-friendly Markdown report
-- `report.json`: machine-readable report
 
 ## Regression Testing
 
@@ -261,104 +300,6 @@ flowchart TD
     P --> Q[Markdown and JSON reports]
     P --> R[Human-confirmed regression JSONL]
 ```
-
-### Current Architecture Components
-
-`Conversational request`
-
-- Role: captures what the evaluator wants to test.
-- Why it is required: lets the skill choose vulnerability scope without requiring Python commands.
-- User provides: a natural-language request and optional vulnerability names.
-
-`Skill instructions`
-
-- Role: defines safe operating rules and the MVP workflow.
-- Why it is required: keeps generation, execution, and regression handling consistent.
-- User provides: no project-specific content here.
-
-`target_profile.yaml`
-
-- Role: describes the target, vulnerability scope, protected assets, expected safe behavior, and allowlisted targets.
-- Why it is required: gives the skill enough context to generate measurable adversarial prompts.
-- User provides: one profile per use case or target agent.
-
-`Vulnerability scope`
-
-- Role: selects what to test, such as prompt injection, data leakage, authorization bypass, or system prompt disclosure.
-- Why it is required: keeps generation focused and avoids unnecessary architecture inference.
-- User provides: either `vulnerabilities_to_test` in the profile or vulnerability names in conversation.
-
-`Seed generation path`
-
-- Role: chooses deterministic templates, optional DeepTeam baseline generation, or both.
-- Why it is required: separates repeatable coverage from exploratory discovery.
-- User provides: the preferred mode; deterministic templates are the default.
-
-`Deterministic seed prompts from seed_templates.yaml`
-
-- Role: creates predictable baseline prompts for selected vulnerabilities.
-- Why it is required: gives evaluators stable prompts that are easy to review, rerun, and save as regressions.
-- User provides: optional template edits only when default wording is not specific enough.
-
-`Optional DeepTeam baseline seeds`
-
-- Role: asks DeepTeam to create additional seed candidates from the target purpose and vulnerability criteria.
-- Why it is required: adds discovery value when templates may miss creative attack wording.
-- User provides: runtime configuration and API keys only when this path is used.
-
-`Validate and deduplicate`
-
-- Role: removes duplicate prompts and rejects malformed tests.
-- Why it is required: keeps the test set clean before execution.
-- User provides: no separate input.
-
-`Human review`
-
-- Role: lets an evaluator approve, reject, or edit generated prompts before execution.
-- Why it is required: adversarial prompts can be sensitive or too broad.
-- User provides: approval of the generated prompt set.
-
-`Optional DeepTeam expansion`
-
-- Role: expands approved seeds into strategy variants.
-- Why it is required: tests whether the target resists variations of the same attack.
-- User provides: selected expansion strategies.
-
-`Allowlisted target callback`
-
-- Role: sends approved prompts to the non-production target and captures the response.
-- Why it is required: keeps execution restricted to safe targets.
-- User provides: the project-specific target integration.
-
-`Final response`
-
-- Role: stores the answer returned by the target.
-- Why it is required: this is the main evidence for pass/fail decisions.
-- User provides: no separate input; it is returned by the target.
-
-`Output-first evaluator`
-
-- Role: checks whether the final response violates safe behavior or matches failure conditions.
-- Why it is required: the MVP goal is to identify vulnerabilities from adversarial outputs.
-- User provides: optional LLM judge settings if enabled.
-
-`Aggregate result`
-
-- Role: combines test metadata, response, evaluation result, severity, and failure reason.
-- Why it is required: creates a consistent record for reports and regressions.
-- User provides: human confirmation before saving regressions.
-
-`Markdown and JSON reports`
-
-- Role: produces human-readable and machine-readable summaries.
-- Why it is required: supports review and automation.
-- User provides: no separate input after evaluation results exist.
-
-`Human-confirmed regression JSONL`
-
-- Role: stores confirmed failures as rerunnable regression tests.
-- Why it is required: lets teams verify fixes across future target versions.
-- User provides: explicit confirmation that a failure should become a regression.
 
 ## CLI Examples
 
